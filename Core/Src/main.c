@@ -54,7 +54,15 @@ typedef void (*fnc_ptr)(void);
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-#define FLASH_APP_START_ADDRESS ((uint32_t)0x08000000u)
+#define UPGRADE_STATE_START_LENGTH 6 // strlen("FWUG") + 2(0x0D 0x0A)
+#define UPGRADE_STATE_PROC_LENGTH 16 // 2bytes of data length + data(<= (UPGRADE_STATE_PROC_LENGTH-4)bytes) + 2(0x0D 0x0A)
+#define UPGRADE_STATE_END_LENGTH 6 // strlen("FWED") + 2(0x0D 0x0A)
+/* Status report for the functions. */
+typedef enum {
+  UPGRADE_STATE_START = 0x00u,
+  UPGRADE_STATE_PROC = 0x01u,
+  UPGRADE_STATE_END = 0x02u,
+} upgrade_state;
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -94,100 +102,111 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  char version_info[64] = {0};
-  memset(version_info, '\0', sizeof(char)*64);
-  sprintf(version_info, "Firmware Version...%s,%s%s\r\n", FW_VERSION, __DATE__, __TIME__);
-  uart_transmit_str((uint8_t*)version_info);
+  printf("Firmware Version...%s,%s%s\r\n", FW_VERSION, __DATE__, __TIME__);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // [UART]
-  uart_status comm_status = UART_OK;
   uint8_t *uart_receive_data = NULL;
   uart_receive_data = (uint8_t *)malloc(sizeof(uint8_t)*UART_RECEIVE_SIZE);
   // [FLASH]
-  flash_status flashop_status = FLASH_OK;
-  uint32_t upgrade_id_address = UPGRADE_ID_ADDRESS;
-  uint32_t upgrade_id_erase_address = UPGRADE_ID_ERASE_ADDRESS;
   uint32_t upgrade_id = UPGRADE_ID;
-  uint32_t upgrade_checker = 0;
-  // [TEST]
-  uint32_t upgrade_id_debug = 0xAABBCCDDu;
+  uint32_t upgrade_id_checker = 0;
 
   // [MAIN LOOP]
+  upgrade_state upgrade_status = UPGRADE_STATE_START;
   while (1)
   {
-	  upgrade_checker = (uint32_t)(*(uint32_t *)(upgrade_id_address));
-	  DEBUG("upgrade_checker = 0x%08x\r\n", upgrade_checker);
-	  if (upgrade_checker == upgrade_id)
+	  upgrade_id_checker = (uint32_t)(*(uint32_t *)(UPGRADE_ID_ADDRESS));
+	  DEBUG_INFO("upgrade_id_checker = 0x%08x\r\n", upgrade_id_checker);
+
+	  if (upgrade_id_checker == UPGRADE_ID)
 	  {
 		  printf("READY_TO_UPGRADE\r\n");
-		  // [TEST]
-		  while (1)
+
+		  while(1)
 		  {
-			  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
-			  comm_status = uart_receive(uart_receive_data, 1);
-			  DEBUG("uart_receive_data %s, comm_status = %x\r\n", (char *)uart_receive_data, (char *)comm_status);
-			  if (uart_receive_data[0] == 'q')
+			  if (upgrade_status == UPGRADE_STATE_START)
 			  {
-				  flashop_status = flash_erase(upgrade_id_erase_address);
-				  DEBUG("flash_erase = %d\r\n", (int)flashop_status);
-				  flashop_status = flash_write(upgrade_id_address, (uint32_t*)&upgrade_id_debug, 1);
-				  DEBUG("flash_write = %d\r\n", (int)flashop_status);
-				  break;
+				  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
+				  HAL_UART_Receive(&huart1, uart_receive_data, UPGRADE_STATE_START_LENGTH, UART_TIMEOUT);
+				  DEBUG_INFO("[UPGRADE_STATE_START] uart_receive_data %s\r\n", (char *)uart_receive_data);
+
+				  if (uart_receive_data[0] == 'F' && uart_receive_data[1] == 'W' && uart_receive_data[2] == 'U' && uart_receive_data[3] == 'G' && \
+					  uart_receive_data[4] == '\r' && uart_receive_data[5] == '\n')
+				  {
+					  printf("OK\r\n");
+					  flash_erase(FLASH_APP_START_ADDRESS);
+					  upgrade_status = UPGRADE_STATE_PROC;
+				  }
+				  else
+				  {
+					  printf("FAIL\r\n");
+					  flash_back_to_bootloader();
+				  }
+			  }
+			  else if (upgrade_status == UPGRADE_STATE_PROC)
+			  {
+				  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
+				  HAL_UART_Receive(&huart1, uart_receive_data, UPGRADE_STATE_PROC_LENGTH, UART_TIMEOUT);
+				  uint16_t data_length = ((((uint16_t)uart_receive_data[0])<<8) + ((uint16_t)uart_receive_data[1]));
+				  DEBUG_INFO("[UPGRADE_STATE_PROC] uart_receive_data = %s, data_length = %d\r\n", (char *)uart_receive_data, (int)data_length);
+				  DEBUG_INFO("[UPGRADE_STATE_PROC] uart_receive_data[(data_length + 2)] = %x, uart_receive_data[(data_length + 3)] = %x\r\n", uart_receive_data[(data_length + 2)], uart_receive_data[(data_length + 3)]);
+				  if (data_length > (UPGRADE_STATE_PROC_LENGTH - 4) || uart_receive_data[(data_length + 2)] != '\r' || uart_receive_data[(data_length + 3)] != '\n')
+				  {
+					  printf("FAIL\r\n");
+					  flash_erase(UPGRADE_ID_ERASE_ADDRESS);
+					  flash_write(UPGRADE_ID_ADDRESS, (uint32_t*)&upgrade_id, 1);
+					  flash_back_to_bootloader();
+				  }
+				  else if (data_length == (UPGRADE_STATE_PROC_LENGTH - 4))
+				  {
+					  flash_write(FLASH_APP_START_ADDRESS, (uint32_t*)&uart_receive_data[2], data_length);
+					  printf("OK\r\n");
+				  }
+				  else if (data_length < (UPGRADE_STATE_PROC_LENGTH - 4))
+				  {
+					  flash_write(FLASH_APP_START_ADDRESS, (uint32_t*)&uart_receive_data[2], data_length);
+					  printf("OK\r\n");
+					  upgrade_status = UPGRADE_STATE_END;
+				  }
+			  }
+			  else if (upgrade_status == UPGRADE_STATE_END)
+			  {
+				  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
+				  HAL_UART_Receive(&huart1, uart_receive_data, UPGRADE_STATE_END_LENGTH, UART_TIMEOUT);
+				  DEBUG_INFO("[UPGRADE_STATE_END] uart_receive_data %s\r\n", (char *)uart_receive_data);
+
+				  if (uart_receive_data[0] == 'F' && uart_receive_data[1] == 'W' && uart_receive_data[2] == 'E' && uart_receive_data[3] == 'D' && \
+					  uart_receive_data[4] == '\r' && uart_receive_data[5] == '\n' )
+				  {
+					  printf("OK\r\n");
+					  flash_back_to_bootloader(); //flash_jump_to_app();
+				  }
+				  else
+				  {
+					  printf("FAIL\r\n");
+					  flash_erase(UPGRADE_ID_ERASE_ADDRESS);
+					  flash_write(UPGRADE_ID_ADDRESS, (uint32_t*)&upgrade_id, 1);
+					  flash_back_to_bootloader();
+				  }
 			  }
 		  }
-		  // TODO >> receive the FW from uart and write it in the upload buffer
-		  //         if there is any mistake, response "FAIL" and flash_jump_to_app()
-		  //         if not, I will response with "OK" for every transmission of package
-		  //         I expect to receive "FWUGRD" (fireware_upgrade_ready) to start the upgrade flow, and the following packages would be the FW
-		  //         (the host can identify "READY_TO_UPGRADE" or "DONT_NEED_TO_UPGRADE" outputs from bootloader and send "FWUGRD")
-		  //         currently, total size of FW is about 24KB, try to design the package size with 512bytes (about 48~50 packages)
-		  //         each package needs two bytes of checksum and two bytes of data length, and ends with 0x0D(\r) 0x0A(\n), so the remaining size for data will be 506bytes
-		  //         (0xAA(checksum MSB), 0xBB(checksum LSB), 0xCC(data length MSB), 0xDD(data length LSB), 0xEE(fw), ....., 0xFF(fw), 0x0D(end), 0x0A(end))
-		  //         if the data length is less than 506bytes(equal : not the last, larger : FAIL), I would know it's the last package of FW
-		  //         after the last package of FW is received, I would expect the following final package is the total checksum(two bytes) to verify the whole FW again
-		  //         0xAA(total checksum MSB), 0xBB(total checksum LSB), 0x0D(end), 0x0A(end)
-		  //         and just like the previous transmission, I would response "OK", the upgrade is finished
-		  //         so according to the above mentioned, I need to check the checksum and data length of each package
-		  //         after check the whole checksum, just copy the FW in the upload buffer to app flash block, and than flash_jump_to_app()
 	  }
 	  else
 	  {
 		  printf("DONT_NEED_TO_UPGRADE\r\n");
-		  // [TEST]
-		  while (1)
-		  {
-			  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
-			  comm_status = uart_receive(uart_receive_data, 1);
-			  DEBUG("uart_receive_data %s, comm_status = %x\r\n", (char *)uart_receive_data, (char *)comm_status);
-			  if (uart_receive_data[0] == 'q')
-			  {
-				  flashop_status = flash_erase(upgrade_id_erase_address);
-				  DEBUG("flash_erase = %d\r\n", (int)flashop_status);
-				  flashop_status = flash_write(upgrade_id_address, (uint32_t*)&upgrade_id, 1);
-				  DEBUG("flash_write = %d\r\n", (int)flashop_status);
-				  flash_jump_to_app();
-			  }
-		  }
-		  // TODO >> need a flash block for app, and another one for the uploading buffer of upgrade flow,
-		  //         if don't need to upgrade, just flash_jump_to_app()
+#ifdef _DEBUG
+		  flash_erase(UPGRADE_ID_ERASE_ADDRESS);
+		  flash_write(UPGRADE_ID_ADDRESS, (uint32_t*)&upgrade_id, 1);
+#endif
+		  flash_back_to_bootloader(); //flash_jump_to_app();
 	  }
 
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	// [TEST]
-	if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_SET)
-	{
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-	}
-	else
-	{
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	}
-
 	// TIME DELAY
 	HAL_Delay(100);
   }

@@ -34,7 +34,7 @@ extern "C" {
 extern UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN Private defines */
-#define UART_RECEIVE_SIZE 512
+#define UART_RECEIVE_SIZE 520
 #ifdef _DEBUG
 #define UART_DEBUG_INFO_SIZE 64
 #endif
@@ -44,7 +44,7 @@ void MX_USART1_UART_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 /* Timeout for HAL. */
-#define UART_TIMEOUT ((uint16_t)1000u)
+#define UART_TIMEOUT HAL_MAX_DELAY //((uint16_t)1000u)
 
 /* Status report for the functions. */
 typedef enum {

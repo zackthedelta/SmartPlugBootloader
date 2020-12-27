@@ -8,7 +8,7 @@
  */
 
 #include "flash.h"
-
+#include <stdio.h>
 /* Function pointer for jumping to user application. */
 typedef void (*fnc_ptr)(void);
 
@@ -101,3 +101,18 @@ void flash_jump_to_app(void)
   jump_to_app();
 }
 
+/**
+ * @brief   Actually back to the bootloader.
+ * @param   void
+ * @return  void
+ */
+void flash_back_to_bootloader(void)
+{
+  /* Function pointer to the address of the user application. */
+  fnc_ptr jump_to_app;
+  jump_to_app = (fnc_ptr)(*(volatile uint32_t*) (FLASH_BOOT_START_ADDRESS+4u));
+  HAL_DeInit();
+  /* Change the main stack pointer. */
+  __set_MSP(*(volatile uint32_t*)FLASH_BOOT_START_ADDRESS);
+  jump_to_app();
+}

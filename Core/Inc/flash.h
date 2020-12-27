@@ -14,14 +14,25 @@
 
 /* Start and end addresses of the user application. */
 #define FLASH_BOOT_START_ADDRESS ((uint32_t)0x08000000u)
-#define FLASH_BOOT_END_ADDRESS   ((uint32_t)FLASH_BANK1_END-0x10u) /**< Leave a little extra space at the end. */
+#define FLASH_BOOT_END_ADDRESS   ((uint32_t)0x08003FFFu)
 
-#define FLASH_APP_START_ADDRESS ((uint32_t)0x08000000u)
-#define FLASH_APP_END_ADDRESS   ((uint32_t)FLASH_BANK1_END-0x10u) /**< Leave a little extra space at the end. */
+#define FLASH_APP_START_ADDRESS ((uint32_t)0x08004000u)
+#define FLASH_APP_END_ADDRESS   ((uint32_t)0x0800FBFFu)
 
-#define UPGRADE_ID ((uint32_t)0xABCDEFFFu)
-#define UPGRADE_ID_ERASE_ADDRESS ((uint32_t)0x08003800u)
-#define UPGRADE_ID_ADDRESS ((uint32_t)0x08003FFCu) //use 16KBytes for bootloader (identify position : 0x3FFF - 0x0004)
+#define UPGRADE_ID ((uint32_t)0xAABBCCDDu)
+#define UPGRADE_ID_ERASE_ADDRESS ((uint32_t)0x0800FC00u)
+#define UPGRADE_ID_ADDRESS ((uint32_t)0x0800FC00u)
+
+#define DONT_UPGRADE_ID ((uint32_t)0xFFFFFFFFu)
+
+//=================== 0x08000000
+//Bootloader //16KB
+//=================== 0x08004000
+//APP //46KB
+//=================== 0x0800FC00
+//Reserve //1KB
+//=================== 0x0800FFFF
+
 
 /* Status report for the functions. */
 typedef enum {
@@ -35,5 +46,6 @@ typedef enum {
 flash_status flash_erase(uint32_t address);
 flash_status flash_write(uint32_t address, uint32_t *data, uint32_t length);
 void flash_jump_to_app(void);
+void flash_back_to_bootloader(void);
 
 #endif /* FLASH_H_ */
