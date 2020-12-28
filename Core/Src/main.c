@@ -54,22 +54,19 @@ typedef void (*fnc_ptr)(void);
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-#define UPGRADE_STATE_START_LENGTH 6 // strlen("FWUG") + 2(0x0D 0x0A)
-#define UPGRADE_STATE_PROC_LENGTH 16 // 2bytes of data length + data(<= (UPGRADE_STATE_PROC_LENGTH-4)bytes) + 2(0x0D 0x0A)
-#define UPGRADE_STATE_END_LENGTH 6 // strlen("FWED") + 2(0x0D 0x0A)
+
 /* Status report for the functions. */
-typedef enum {
-  UPGRADE_STATE_START = 0x00u,
-  UPGRADE_STATE_PROC = 0x01u,
-  UPGRADE_STATE_END = 0x02u,
-} upgrade_state;
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+typedef enum {
+  UPGRADE_STATE_START = 0x00u,
+  UPGRADE_STATE_PROC = 0x01u,
+  UPGRADE_STATE_END = 0x02u,
+} upgrade_state;
 /* USER CODE END 0 */
 
 /**
@@ -108,22 +105,30 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // [UART]
+  uint16_t data_length = 0;
   uint8_t *uart_receive_data = NULL;
   uart_receive_data = (uint8_t *)malloc(sizeof(uint8_t)*UART_RECEIVE_SIZE);
   // [FLASH]
   uint32_t upgrade_id = UPGRADE_ID;
   uint32_t upgrade_id_checker = 0;
-
+  uint32_t upgrade_chksum = 0;
+  uint32_t receive_chksum = 0;
+  uint32_t total_fw_length = 0;
   // [MAIN LOOP]
   upgrade_state upgrade_status = UPGRADE_STATE_START;
+
   while (1)
   {
-	  upgrade_id_checker = (uint32_t)(*(uint32_t *)(UPGRADE_ID_ADDRESS));
+	  upgrade_id_checker = (uint32_t)(*(uint32_t *)(FLASH_UPGRADEINFO_START_ADDRESS));
 	  DEBUG_INFO("upgrade_id_checker = 0x%08x\r\n", upgrade_id_checker);
 
 	  if (upgrade_id_checker == UPGRADE_ID)
 	  {
 		  printf("READY_TO_UPGRADE\r\n");
+		  flash_erase(FLASH_APP2_START_ADDRESS, FLASH_APP2_PAGES);
+		  flash_erase(FLASH_UPGRADEINFO_START_ADDRESS, FLASH_UPGRADEINFO_PAGES);
+		  upgrade_chksum = 0;
+		  total_fw_length = 0;
 
 		  while(1)
 		  {
@@ -137,71 +142,78 @@ int main(void)
 					  uart_receive_data[4] == '\r' && uart_receive_data[5] == '\n')
 				  {
 					  printf("OK\r\n");
-					  flash_erase(FLASH_APP_START_ADDRESS);
 					  upgrade_status = UPGRADE_STATE_PROC;
 				  }
 				  else
 				  {
 					  printf("FAIL\r\n");
-					  flash_back_to_bootloader();
+					  flash_jump_to_app();
 				  }
 			  }
 			  else if (upgrade_status == UPGRADE_STATE_PROC)
 			  {
 				  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
 				  HAL_UART_Receive(&huart1, uart_receive_data, UPGRADE_STATE_PROC_LENGTH, UART_TIMEOUT);
-				  uint16_t data_length = ((((uint16_t)uart_receive_data[0])<<8) + ((uint16_t)uart_receive_data[1]));
+				  data_length = ((((uint16_t)uart_receive_data[0])<<8) + ((uint16_t)uart_receive_data[1]));
 				  DEBUG_INFO("[UPGRADE_STATE_PROC] uart_receive_data = %s, data_length = %d\r\n", (char *)uart_receive_data, (int)data_length);
 				  DEBUG_INFO("[UPGRADE_STATE_PROC] uart_receive_data[(data_length + 2)] = %x, uart_receive_data[(data_length + 3)] = %x\r\n", uart_receive_data[(data_length + 2)], uart_receive_data[(data_length + 3)]);
 				  if (data_length > (UPGRADE_STATE_PROC_LENGTH - 4) || uart_receive_data[(data_length + 2)] != '\r' || uart_receive_data[(data_length + 3)] != '\n')
 				  {
 					  printf("FAIL\r\n");
-					  flash_erase(UPGRADE_ID_ERASE_ADDRESS);
-					  flash_write(UPGRADE_ID_ADDRESS, (uint32_t*)&upgrade_id, 1);
-					  flash_back_to_bootloader();
+					  flash_jump_to_app();
 				  }
-				  else if (data_length == (UPGRADE_STATE_PROC_LENGTH - 4))
+				  else
 				  {
-					  flash_write(FLASH_APP_START_ADDRESS, (uint32_t*)&uart_receive_data[2], data_length);
+					  total_fw_length += data_length;
+					  for (int i=2; i<(data_length+2); i++)
+					  {
+						  upgrade_chksum += uart_receive_data[i];
+					  }
+
+					  if (data_length < (UPGRADE_STATE_PROC_LENGTH - 4))
+					  {
+						  upgrade_status = UPGRADE_STATE_END;
+						  for (int i=(data_length+2); i<UPGRADE_STATE_PROC_LENGTH; i++)
+						  {
+							  uart_receive_data[i] = 0xFF;
+						  }
+						  data_length = (UPGRADE_STATE_PROC_LENGTH - 4);
+					  }
+
+					  flash_write(FLASH_APP2_START_ADDRESS, (uint32_t*)&uart_receive_data[2], (data_length/4));
 					  printf("OK\r\n");
-				  }
-				  else if (data_length < (UPGRADE_STATE_PROC_LENGTH - 4))
-				  {
-					  flash_write(FLASH_APP_START_ADDRESS, (uint32_t*)&uart_receive_data[2], data_length);
-					  printf("OK\r\n");
-					  upgrade_status = UPGRADE_STATE_END;
 				  }
 			  }
 			  else if (upgrade_status == UPGRADE_STATE_END)
 			  {
+				  DEBUG_INFO("[UPGRADE_STATE_END] upgrade_chksum = 0x%08x\r\n", upgrade_chksum);
 				  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
 				  HAL_UART_Receive(&huart1, uart_receive_data, UPGRADE_STATE_END_LENGTH, UART_TIMEOUT);
 				  DEBUG_INFO("[UPGRADE_STATE_END] uart_receive_data %s\r\n", (char *)uart_receive_data);
-
+				  receive_chksum = ((((uint16_t)uart_receive_data[4])<<24) + (((uint16_t)uart_receive_data[5])<<16) + (((uint16_t)uart_receive_data[6])<<8) + ((uint16_t)uart_receive_data[7]));
 				  if (uart_receive_data[0] == 'F' && uart_receive_data[1] == 'W' && uart_receive_data[2] == 'E' && uart_receive_data[3] == 'D' && \
-					  uart_receive_data[4] == '\r' && uart_receive_data[5] == '\n' )
+					  uart_receive_data[8] == '\r' && uart_receive_data[9] == '\n' && \
+					  upgrade_chksum == receive_chksum)
 				  {
+					  flash_write(FLASH_APP1_START_ADDRESS, (uint32_t *)(FLASH_APP2_START_ADDRESS), (total_fw_length/4));
 					  printf("OK\r\n");
-					  flash_back_to_bootloader(); //flash_jump_to_app();
 				  }
 				  else
 				  {
 					  printf("FAIL\r\n");
-					  flash_erase(UPGRADE_ID_ERASE_ADDRESS);
-					  flash_write(UPGRADE_ID_ADDRESS, (uint32_t*)&upgrade_id, 1);
-					  flash_back_to_bootloader();
 				  }
+
+				  flash_jump_to_app();
 			  }
 		  }
 	  }
 	  else
 	  {
 		  printf("DONT_NEED_TO_UPGRADE\r\n");
-#ifdef _DEBUG
-		  flash_erase(UPGRADE_ID_ERASE_ADDRESS);
-		  flash_write(UPGRADE_ID_ADDRESS, (uint32_t*)&upgrade_id, 1);
+#ifdef _DEBUG_INFO
+		  flash_write(FLASH_UPGRADEINFO_START_ADDRESS, (uint32_t*)&upgrade_id, 1);
 #endif
-		  flash_back_to_bootloader(); //flash_jump_to_app();
+		  flash_jump_to_app();
 	  }
 
     /* USER CODE END WHILE */

@@ -103,33 +103,6 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
-/**
- * @file    uart.c
- * @author  Ferenc Nemeth
- * @date    21 Dec 2018
- * @brief   This module is a layer between the HAL UART functions and my Xmodem protocol.
- *
- *          Copyright (c) 2018 Ferenc Nemeth - https://github.com/ferenc-nemeth
- */
-
-/**
- * @brief   Receives data from UART.
- * @param   *data: Array to save the received data.
- * @param   length:  Size of the data.
- * @return  status: Report about the success of the receiving.
- */
-uart_status uart_receive(uint8_t *data, uint16_t length)
-{
-  uart_status status = UART_ERROR;
-
-  if (HAL_OK == HAL_UART_Receive(&huart1, data, length, UART_TIMEOUT))
-  {
-    status = UART_OK;
-  }
-
-  return status;
-}
-
 #ifdef __GNUC__
   /* With GCC/RAISONANCE, small printf (option LD Linker->Libraries->Small printf
      set to 'Yes') calls __io_putchar() */

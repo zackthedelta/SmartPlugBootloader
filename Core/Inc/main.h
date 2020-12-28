@@ -32,7 +32,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#define   FW_VERSION "0.0"
+#define   FW_VERSION "0.1"
 #define _DEBUG_INFO
 #ifdef _DEBUG_INFO
 #define DEBUG_INFO(format, args...) printf("[%s:%d] "format, __FILE__, __LINE__, ##args)

@@ -17,7 +17,7 @@ typedef void (*fnc_ptr)(void);
  * @param   address: First address to be erased (the last is the end of the flash).
  * @return  status: Report about the success of the erasing.
  */
-flash_status flash_erase(uint32_t address)
+flash_status flash_erase(uint32_t address, uint32_t nbpages)
 {
   HAL_FLASH_Unlock();
 
@@ -28,9 +28,7 @@ flash_status flash_erase(uint32_t address)
   erase_init.TypeErase = FLASH_TYPEERASE_PAGES;
   erase_init.PageAddress = address;
   erase_init.Banks = FLASH_BANK_1;
-  /* Calculate the number of pages from "address" and the end of flash. */
-  erase_init.NbPages = (FLASH_BANK1_END - address) / FLASH_PAGE_SIZE;
-  /* Do the actual erasing. */
+  erase_init.NbPages = nbpages;
   if (HAL_OK == HAL_FLASHEx_Erase(&erase_init, &error))
   {
     status = FLASH_OK;
@@ -58,7 +56,7 @@ flash_status flash_write(uint32_t address, uint32_t *data, uint32_t length)
   for (uint32_t i = 0u; (i < length) && (FLASH_OK == status); i++)
   {
     /* If we reached the end of the memory, then report an error and don't do anything else.*/
-    if (FLASH_APP_END_ADDRESS <= address)
+    if (FLASH_BANK1_END <= address)
     {
       status |= FLASH_ERROR_SIZE;
     }
@@ -92,12 +90,15 @@ flash_status flash_write(uint32_t address, uint32_t *data, uint32_t length)
  */
 void flash_jump_to_app(void)
 {
+  flash_back_to_bootloader(); //Debug
+  return; //Debug
+
   /* Function pointer to the address of the user application. */
   fnc_ptr jump_to_app;
-  jump_to_app = (fnc_ptr)(*(volatile uint32_t*) (FLASH_APP_START_ADDRESS+4u));
+  jump_to_app = (fnc_ptr)(*(volatile uint32_t*) (FLASH_APP1_START_ADDRESS+4u));
   HAL_DeInit();
   /* Change the main stack pointer. */
-  __set_MSP(*(volatile uint32_t*)FLASH_APP_START_ADDRESS);
+  __set_MSP(*(volatile uint32_t*)FLASH_APP1_START_ADDRESS);
   jump_to_app();
 }
 

@@ -14,25 +14,34 @@
 
 /* Start and end addresses of the user application. */
 #define FLASH_BOOT_START_ADDRESS ((uint32_t)0x08000000u)
-#define FLASH_BOOT_END_ADDRESS   ((uint32_t)0x08003FFFu)
+#define FLASH_BOOT_END_ADDRESS   ((uint32_t)0x08005FFFu)
+#define FLASH_BOOT_PAGES   (FLASH_BOOT_END_ADDRESS/FLASH_PAGE_SIZE)+1
 
-#define FLASH_APP_START_ADDRESS ((uint32_t)0x08004000u)
-#define FLASH_APP_END_ADDRESS   ((uint32_t)0x0800FBFFu)
+#define FLASH_APP1_START_ADDRESS ((uint32_t)0x08006000u)
+#define FLASH_APP1_END_ADDRESS   ((uint32_t)0x08011FFFu)
+#define FLASH_APP1_PAGES   (FLASH_APP1_END_ADDRESS/FLASH_PAGE_SIZE)+1
+
+#define FLASH_APP2_START_ADDRESS ((uint32_t)0x08006000u)
+#define FLASH_APP2_END_ADDRESS   ((uint32_t)0x08011FFFu)
+#define FLASH_APP2_PAGES   (FLASH_APP2_END_ADDRESS/FLASH_PAGE_SIZE)+1
+
+#define FLASH_UPGRADEINFO_START_ADDRESS ((uint32_t)0x0801FC00u)
+#define FLASH_UPGRADEINFO_END_ADDRESS   ((uint32_t)0x0801FFFFu)
+#define FLASH_UPGRADEINFO_PAGES   (FLASH_UPGRADEINFO_END_ADDRESS/FLASH_PAGE_SIZE)+1
 
 #define UPGRADE_ID ((uint32_t)0xAABBCCDDu)
-#define UPGRADE_ID_ERASE_ADDRESS ((uint32_t)0x0800FC00u)
-#define UPGRADE_ID_ADDRESS ((uint32_t)0x0800FC00u)
-
-#define DONT_UPGRADE_ID ((uint32_t)0xFFFFFFFFu)
 
 //=================== 0x08000000
-//Bootloader //16KB
-//=================== 0x08004000
-//APP //46KB
-//=================== 0x0800FC00
-//Reserve //1KB
-//=================== 0x0800FFFF
-
+//Bootloader //24KB
+//=================== 0x08006000
+//APP_1 //48KB
+//=================== 0x08012000
+//APP_2 //48KB
+//=================== 0x0801E000
+//Reserve //7KB
+//=================== 0x0801FC00
+//Upgrade info. //1KB
+//=================== 0x0801FFFF
 
 /* Status report for the functions. */
 typedef enum {
@@ -43,7 +52,7 @@ typedef enum {
   FLASH_ERROR           = 0xFFu  /**< Generic error. */
 } flash_status;
 
-flash_status flash_erase(uint32_t address);
+flash_status flash_erase(uint32_t address, uint32_t nbpages);
 flash_status flash_write(uint32_t address, uint32_t *data, uint32_t length);
 void flash_jump_to_app(void);
 void flash_back_to_bootloader(void);
