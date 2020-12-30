@@ -120,8 +120,9 @@ int main(void)
   while (1)
   {
 	  upgrade_id_checker = (uint32_t)(*(uint32_t *)(FLASH_UPGRADEINFO_START_ADDRESS));
+#ifdef _DEBUG_FLOW
 	  DEBUG_INFO("upgrade_id_checker = 0x%08x\r\n", upgrade_id_checker);
-
+#endif
 	  if (upgrade_id_checker == UPGRADE_ID)
 	  {
 		  printf("READY_TO_UPGRADE\r\n");
@@ -136,8 +137,9 @@ int main(void)
 			  {
 				  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
 				  HAL_UART_Receive(&huart1, uart_receive_data, UPGRADE_STATE_START_LENGTH, UART_TIMEOUT);
+#ifdef _DEBUG_FLOW
 				  DEBUG_INFO("[UPGRADE_STATE_START] uart_receive_data %s\r\n", (char *)uart_receive_data);
-
+#endif
 				  if (uart_receive_data[0] == 'F' && uart_receive_data[1] == 'W' && uart_receive_data[2] == 'U' && uart_receive_data[3] == 'G' && \
 					  uart_receive_data[4] == '\r' && uart_receive_data[5] == '\n')
 				  {
@@ -155,16 +157,16 @@ int main(void)
 				  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
 				  HAL_UART_Receive(&huart1, uart_receive_data, UPGRADE_STATE_PROC_LENGTH, UART_TIMEOUT);
 				  data_length = ((((uint16_t)uart_receive_data[0])<<8) + ((uint16_t)uart_receive_data[1]));
-				  DEBUG_INFO("[UPGRADE_STATE_PROC] uart_receive_data = %s, data_length = %d\r\n", (char *)uart_receive_data, (int)data_length);
-				  DEBUG_INFO("[UPGRADE_STATE_PROC] uart_receive_data[(data_length + 2)] = %x, uart_receive_data[(data_length + 3)] = %x\r\n", uart_receive_data[(data_length + 2)], uart_receive_data[(data_length + 3)]);
-				  if (data_length > (UPGRADE_STATE_PROC_LENGTH - 4) || uart_receive_data[(data_length + 2)] != '\r' || uart_receive_data[(data_length + 3)] != '\n')
+#ifdef _DEBUG_FLOW
+				  DEBUG_INFO("[UPGRADE_STATE_PROC] data_length = %d\r\n", (int)data_length);
+#endif
+				  if (data_length > (UPGRADE_STATE_PROC_LENGTH - 4) || uart_receive_data[(UPGRADE_STATE_PROC_LENGTH - 2)] != '\r' || uart_receive_data[(UPGRADE_STATE_PROC_LENGTH - 1)] != '\n')
 				  {
 					  printf("FAIL\r\n");
 					  flash_jump_to_app();
 				  }
-				  else
+				  else if (data_length != 0)
 				  {
-					  total_fw_length += data_length;
 					  for (int i=2; i<(data_length+2); i++)
 					  {
 						  upgrade_chksum += uart_receive_data[i];
@@ -177,19 +179,26 @@ int main(void)
 						  {
 							  uart_receive_data[i] = 0xFF;
 						  }
-						  data_length = (UPGRADE_STATE_PROC_LENGTH - 4);
 					  }
 
-					  flash_write(FLASH_APP2_START_ADDRESS, (uint32_t*)&uart_receive_data[2], (data_length/4));
+					  flash_write((FLASH_APP2_START_ADDRESS+total_fw_length), (uint32_t*)&uart_receive_data[2], ((UPGRADE_STATE_PROC_LENGTH - 4)/4));
+					  total_fw_length += data_length;
+					  printf("OK\r\n");
+				  }
+				  else if (data_length == 0)
+				  {
+					  upgrade_status = UPGRADE_STATE_END;
 					  printf("OK\r\n");
 				  }
 			  }
 			  else if (upgrade_status == UPGRADE_STATE_END)
 			  {
-				  DEBUG_INFO("[UPGRADE_STATE_END] upgrade_chksum = 0x%08x\r\n", upgrade_chksum);
 				  memset(uart_receive_data, '\0', sizeof(uint8_t)*UART_RECEIVE_SIZE);
 				  HAL_UART_Receive(&huart1, uart_receive_data, UPGRADE_STATE_END_LENGTH, UART_TIMEOUT);
+#ifdef _DEBUG_FLOW
+				  DEBUG_INFO("[UPGRADE_STATE_END] upgrade_chksum = 0x%08x\r\n", upgrade_chksum);
 				  DEBUG_INFO("[UPGRADE_STATE_END] uart_receive_data %s\r\n", (char *)uart_receive_data);
+#endif
 				  receive_chksum = ((((uint16_t)uart_receive_data[4])<<24) + (((uint16_t)uart_receive_data[5])<<16) + (((uint16_t)uart_receive_data[6])<<8) + ((uint16_t)uart_receive_data[7]));
 				  if (uart_receive_data[0] == 'F' && uart_receive_data[1] == 'W' && uart_receive_data[2] == 'E' && uart_receive_data[3] == 'D' && \
 					  uart_receive_data[8] == '\r' && uart_receive_data[9] == '\n' && \
@@ -197,6 +206,21 @@ int main(void)
 				  {
 					  flash_write(FLASH_APP1_START_ADDRESS, (uint32_t *)(FLASH_APP2_START_ADDRESS), (total_fw_length/4));
 					  printf("OK\r\n");
+#ifdef _DEBUG_FLOW
+					  DEBUG_INFO("FLASH_APP1_START_ADDRESS\r\n");
+					  for (int i=0; i<(total_fw_length-1); i++)
+					  {
+						  printf("[%d]0x%x, ", i, *(uint8_t *)(FLASH_APP1_START_ADDRESS+i));
+					  }
+					  printf("[%d]0x%x\r\n", (total_fw_length-1), *(uint8_t *)(FLASH_APP1_START_ADDRESS+(total_fw_length-1)));
+					  DEBUG_INFO("FLASH_APP2_START_ADDRESS\r\n");
+					  for (int i=0; i<(total_fw_length-1); i++)
+					  {
+						  printf("[%d]0x%x, ", i, *(uint8_t *)(FLASH_APP2_START_ADDRESS+i));
+					  }
+					  printf("[%d]0x%x\r\n", (total_fw_length-1), *(uint8_t *)(FLASH_APP2_START_ADDRESS+(total_fw_length-1)));
+					  DEBUG_INFO("#\r\n");
+#endif
 				  }
 				  else
 				  {
@@ -210,7 +234,7 @@ int main(void)
 	  else
 	  {
 		  printf("DONT_NEED_TO_UPGRADE\r\n");
-#ifdef _DEBUG_INFO
+#ifdef _DEBUG_FLOW
 		  flash_write(FLASH_UPGRADEINFO_START_ADDRESS, (uint32_t*)&upgrade_id, 1);
 #endif
 		  flash_jump_to_app();

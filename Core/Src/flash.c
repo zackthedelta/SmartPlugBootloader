@@ -9,6 +9,7 @@
 
 #include "flash.h"
 #include <stdio.h>
+#include "main.h"
 /* Function pointer for jumping to user application. */
 typedef void (*fnc_ptr)(void);
 
@@ -90,9 +91,10 @@ flash_status flash_write(uint32_t address, uint32_t *data, uint32_t length)
  */
 void flash_jump_to_app(void)
 {
-  flash_back_to_bootloader(); //Debug
-  return; //Debug
-
+#ifdef _DEBUG_FLOW
+  flash_back_to_bootloader();
+  return;
+#endif
   /* Function pointer to the address of the user application. */
   fnc_ptr jump_to_app;
   jump_to_app = (fnc_ptr)(*(volatile uint32_t*) (FLASH_APP1_START_ADDRESS+4u));
