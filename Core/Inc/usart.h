@@ -35,13 +35,13 @@ extern UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN Private defines */
 #define UART_RECEIVE_SIZE 520
-#define UPGRADE_STATE_START_LENGTH 6 // strlen("FWUG") + 2(0x0D 0x0A)
+#define UPGRADE_STATE_START_LENGTH 6 // "FWUG" + 0x0D 0x0A
 #ifdef _DEBUG_FLOW
-#define UPGRADE_STATE_PROC_LENGTH 16 // 2bytes of data length + data(<=(UPGRADE_STATE_PROC_LENGTH-4)bytes) + 2(0x0D 0x0A)
+#define UPGRADE_STATE_PROC_LENGTH 16 // 2bytes of data length + FW binery(UPGRADE_STATE_PROC_LENGTH-4)bytes + 0x0D 0x0A
 #else
-#define UPGRADE_STATE_PROC_LENGTH 516 // 2bytes of data length + data(<=(UPGRADE_STATE_PROC_LENGTH-4)bytes) + 2(0x0D 0x0A)
+#define UPGRADE_STATE_PROC_LENGTH 516 // 2bytes of data length + FW binery(UPGRADE_STATE_PROC_LENGTH-4)bytes + 0x0D 0x0A
 #endif
-#define UPGRADE_STATE_END_LENGTH 10 // strlen("FWED") + 4bytes of checksum + 2(0x0D 0x0A)
+#define UPGRADE_STATE_END_LENGTH 10 // "FWED" + 4bytes of checksum + 0x0D 0x0A
 /* USER CODE END Private defines */
 
 void MX_USART1_UART_Init(void);
